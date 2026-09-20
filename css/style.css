@@ -1,0 +1,26 @@
+@font-face {
+    font-family: 'Cabold Comic';
+    src: url('../assets/fonts/Cabold%20Comic%20demo.otf') format('opentype');
+    font-display: swap;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    color: white;
+    font-family: 'Cabold Comic', 'CHECKBK0', 'Courier New', monospace;
+}
+
+#game-container {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+}
+
+canvas {
+    display: block;
+    image-rendering: auto;
+}
