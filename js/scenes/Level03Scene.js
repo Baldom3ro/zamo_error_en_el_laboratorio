@@ -68,6 +68,175 @@ class Level03Scene extends Phaser.Scene {
             return obj;
         };
 
+        // --- Estado de seguridad y confinamiento ---
+        this.securityErrors = 0;
+        this.confinamientoActivo = false;
+        this.confinamientoTimer = 0;
+        this.confinamientoTimerEvent = null;
+
+        // Overlay de confinamiento
+        this.lockdownOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0xff0000, 0).setScrollFactor(0).setDepth(200);
+
+        // ─── HUD de Confinamiento: DIV HTML flotante (igual a DialogueSystem) ───
+        let lockdownDiv = document.getElementById('lockdown-hud');
+        if (!lockdownDiv) {
+            lockdownDiv = document.createElement('div');
+            lockdownDiv.id = 'lockdown-hud';
+            lockdownDiv.style.cssText = [
+                'position:fixed',
+                'top:18px',
+                'left:50%',
+                'transform:translateX(-50%)',
+                'background:rgba(20,8,8,0.96)',
+                'color:#ffffff',
+                'font-family:"Outfit","Courier New",monospace',
+                'padding:10px 18px',
+                'border:2px solid #ff3333',
+                'border-radius:8px',
+                'box-shadow:0 0 16px rgba(255,50,50,0.7)',
+                'z-index:99998',
+                'display:none',
+                'text-align:center',
+                'min-width:320px',
+                'max-width:90vw',
+                'pointer-events:none'
+            ].join(';');
+            lockdownDiv.innerHTML = `
+                <div style="font-size:13px;font-weight:bold;color:#ff3333;letter-spacing:1px;margin-bottom:6px;">
+                    🚨 PROTOCOLO DE CONFINAMIENTO ACTIVO 🚨
+                </div>
+                <div style="width:100%;height:14px;background:#181818;border-radius:4px;overflow:hidden;border:1px solid #550000;margin-bottom:6px;">
+                    <div id="lockdown-fill" style="width:100%;height:100%;background:#ff3333;transition:width 0.2s linear;"></div>
+                </div>
+                <div id="lockdown-status" style="font-size:12px;font-weight:bold;color:#ffffff;">
+                    ¡SELLADO TOTAL EN: 20s! Cancela en la Terminal Central
+                </div>
+            `;
+            document.body.appendChild(lockdownDiv);
+        }
+        this.lockdownDiv = lockdownDiv;
+        this.lockdownFill = document.getElementById('lockdown-fill');
+        this.lockdownStatus = document.getElementById('lockdown-status');
+
+        this.events.once('shutdown', () => {
+            if (this.lockdownDiv) this.lockdownDiv.style.display = 'none';
+        });
+        this.events.once('destroy', () => {
+            if (this.lockdownDiv) this.lockdownDiv.style.display = 'none';
+        });
+
+        this.registrarErrorSeguridad = (motivo) => {
+            if (this.confinamientoActivo) return;
+            this.securityErrors++;
+
+            if (this.securityErrors === 1) {
+                this.cameras.main.shake(200, 0.015);
+                this.dialogues.show([
+                    motivo || "ADVERTENCIA: Intento incorrecto detectado.",
+                    "SISTEMA: Registro de intrusión (1/3).",
+                    "Zamo: Creo que el laboratorio ya sabe que estamos improvisando."
+                ]);
+            } else if (this.securityErrors === 2) {
+                this.cameras.main.shake(250, 0.02);
+                this.dialogues.show([
+                    motivo || "ADVERTENCIA CRÍTICA: Intento no autorizado.",
+                    "SISTEMA: Protocolo de seguridad en alerta (2/3).",
+                    "Zamo: Solo una observación: deberíamos dejar de probar combinaciones al azar."
+                ]);
+            } else if (this.securityErrors >= 3) {
+                activarConfinamiento();
+            }
+        };
+
+        const actualizarBarraConfinamiento = () => {
+            const pct = Math.max(0, Math.min(100, (this.confinamientoTimer / 20) * 100));
+            if (this.lockdownFill) {
+                this.lockdownFill.style.width = pct + '%';
+            }
+            if (this.lockdownStatus) {
+                if (this.confinamientoTimer <= 7) {
+                    this.lockdownStatus.innerHTML = `<span style="color:#ff3333;font-weight:bold;">¡COMPUERTAS CERRÁNDOSE EN ${this.confinamientoTimer}s! ¡CORRE AL CENTRO!</span>`;
+                } else {
+                    this.lockdownStatus.innerHTML = `¡SELLADO TOTAL EN: ${this.confinamientoTimer}s! Cancela en la Terminal Central`;
+                }
+            }
+        };
+
+        const activarConfinamiento = () => {
+            this.confinamientoActivo = true;
+            this.confinamientoTimer = 20;
+
+            this.cameras.main.flash(400, 255, 0, 0);
+            this.cameras.main.shake(500, 0.025);
+
+            this.tweens.add({
+                targets: this.lockdownOverlay,
+                fillAlpha: 0.3,
+                duration: 500,
+                yoyo: true,
+                repeat: -1
+            });
+
+            if (this.lockdownDiv) this.lockdownDiv.style.display = 'block';
+            actualizarBarraConfinamiento();
+
+            this.dialogues.show([
+                "Zamo: Era una sugerencia, por cierto.",
+                "¡PROTOCOLO DE SEGURIDAD ACTIVADO!",
+                "El laboratorio entra en modo de confinamiento.",
+                "¡Cancela el protocolo en la Terminal Central antes del cierre total!"
+            ]);
+
+            this.confinamientoTimerEvent = this.time.addEvent({
+                delay: 1000,
+                repeat: 20,
+                callback: () => {
+                    this.confinamientoTimer--;
+                    if (this.confinamientoTimer >= 0) {
+                        actualizarBarraConfinamiento();
+                        if (this.confinamientoTimer === 0) {
+                            derrotaConfinamiento();
+                        }
+                    }
+                }
+            });
+        };
+
+        this.cancelarConfinamiento = () => {
+            this.confinamientoActivo = false;
+            this.securityErrors = 1; // Resetea a 1 advertencia
+            if (this.lockdownDiv) this.lockdownDiv.style.display = 'none';
+            if (this.confinamientoTimerEvent) this.confinamientoTimerEvent.remove();
+            this.tweens.killTweensOf(this.lockdownOverlay);
+            this.lockdownOverlay.fillAlpha = 0;
+
+            this.cameras.main.flash(300, 0, 255, 100);
+            this.dialogues.show([
+                "PROTOCOLO DE CONFINAMIENTO ABORTADO.",
+                "Compuertas desbloqueadas temporalmente.",
+                "Zamo: Eso estuvo demasiado cerca."
+            ]);
+        };
+
+        const derrotaConfinamiento = () => {
+            this.confinamientoActivo = false;
+            if (this.lockdownDiv) this.lockdownDiv.style.display = 'none';
+            if (this.confinamientoTimerEvent) this.confinamientoTimerEvent.remove();
+            this.doorIn.close();
+            this.doorModC.close();
+            this.cameras.main.shake(800, 0.035);
+
+            this.time.delayedCall(800, () => {
+                this.scene.start('GameOverScene', {
+                    level: 'Level03Scene',
+                    title: 'PROTOCOLO DE CONFINAMIENTO COMPLETADO',
+                    subtitle: 'Se superó el límite de infracciones. Todas las compuertas de seguridad fueron selladas permanentemente.',
+                    zamoQuote: 'Bueno... técnicamente nadie puede entrar. Ni nosotros salir.',
+                    accentColor: '#ff2222'
+                });
+            });
+        };
+
         // ================================================
         // ZONA 1: CENTRO DE CONTROL (y=0-100)
         // ================================================
@@ -75,12 +244,17 @@ class Level03Scene extends Phaser.Scene {
         this.doorIn.open();
 
         createObj(300, 65, 'machine_temp', () => {
+            if (this.confinamientoActivo) {
+                this.cancelarConfinamiento();
+                return;
+            }
             const sa = this.moduloADone ? 'OK' : 'ERROR';
             const sb = this.moduloBDone ? 'OK' : 'ERROR';
             const sc = this.moduloCDone ? 'OK' : 'ERROR';
             this.dialogues.show([
                 'SISTEMA CENTRAL\nESTADO: INESTABLE\nPROTOCOLO DE CONTENCION: ACTIVO',
                 `[ MODULO A ]  ${sa}\n[ MODULO B ]  ${sb}\n[ MODULO C ]  ${sc}`,
+                `FALLOS REGISTRADOS: ${this.securityErrors}/3`,
                 'RESTAURAR TODOS LOS MODULOS\nPARA DESACTIVAR LA CONTENCION.'
             ]);
         });
@@ -125,10 +299,9 @@ class Level03Scene extends Phaser.Scene {
 
                 if (this.circuitStates[1] && this.circuitStates[3]) {
                     this.cameras.main.shake(250, 0.02);
-                    this.dialogues.show(dialogues.level03.circuitOverload, () => {
-                        this.circuitStates.fill(false);
-                        this.circuitObjs.forEach(s => { s.active = false; s.sprite.setTint(0xffffff); });
-                    });
+                    this.circuitStates.fill(false);
+                    this.circuitObjs.forEach(s => { s.active = false; s.sprite.setTint(0xffffff); });
+                    this.registrarErrorSeguridad("SOBRECARGA ELÉCTRICA EN MÓDULO A.");
                     return;
                 }
                 checkModuloA();
@@ -215,10 +388,10 @@ class Level03Scene extends Phaser.Scene {
                 );
 
                 if (this.terminalSequence[pos] !== CORRECT_B[pos]) {
-                    this.time.delayedCall(900, () => {
+                    this.time.delayedCall(700, () => {
                         this.cameras.main.shake(150, 0.01);
                         this.terminalSequence = [];
-                        this.dialogues.show(dialogues.level03.moduloBError);
+                        this.registrarErrorSeguridad("SECUENCIA DE TRANSMISIÓN INCORRECTA (MÓDULO B).");
                     });
                     return;
                 }

@@ -43,14 +43,6 @@ class Player {
             moving = true;
         }
         
-        if (this.facing === 'left') {
-            this.sprite.setFlipX(true);
-        } else if (this.facing === 'right') {
-            this.sprite.setFlipX(false);
-        } else {
-            this.sprite.setFlipX(false);
-        }
-        
         if (this.sprite.body.velocity.x !== 0 && this.sprite.body.velocity.y !== 0) {
             this.sprite.body.velocity.normalize().scale(this.speed);
         }
@@ -62,6 +54,13 @@ class Player {
             } else {
                 this.sprite.anims.play('player_idle_' + this.facing, true);
             }
+        }
+
+        // El flipX se debe aplicar DESPUÉS de anims.play para que no se anule
+        if (this.facing === 'left') {
+            this.sprite.setFlipX(true);
+        } else {
+            this.sprite.setFlipX(false);
         }
     }
 }

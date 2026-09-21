@@ -41,6 +41,236 @@ class Level04Scene extends Phaser.Scene {
             resolution: 3
         }).setScrollFactor(0).setDepth(300);
 
+        // --- HUD: Estabilidad (derrotas.md) ---
+        this.estabilidad = 100;
+        this.sobrecargaActiva = false;
+        this.sobrecargaTimer = 0;
+        this.sobrecargaTimerEvent = null;
+
+        // ─── HUD de Estabilidad: DIV HTML flotante (igual a DialogueSystem) ───
+        let stabilityDiv = document.getElementById('stability-hud');
+        if (!stabilityDiv) {
+            stabilityDiv = document.createElement('div');
+            stabilityDiv.id = 'stability-hud';
+            stabilityDiv.style.cssText = [
+                'position:fixed',
+                'top:18px',
+                'left:50%',
+                'transform:translateX(-50%)',
+                'background:rgba(8,16,20,0.96)',
+                'color:#ffffff',
+                'font-family:"Outfit","Courier New",monospace',
+                'padding:10px 18px',
+                'border:2px solid #00ffff',
+                'border-radius:8px',
+                'box-shadow:0 0 16px rgba(0,255,255,0.6)',
+                'z-index:99998',
+                'display:block',
+                'text-align:center',
+                'min-width:320px',
+                'max-width:90vw',
+                'pointer-events:none'
+            ].join(';');
+            stabilityDiv.innerHTML = `
+                <div style="font-size:13px;font-weight:bold;color:#00ffff;letter-spacing:1px;margin-bottom:6px;">
+                    ⚡ ESTABILIDAD DEL NÚCLEO CENTRAL ⚡
+                </div>
+                <div style="width:100%;height:14px;background:#151515;border-radius:4px;overflow:hidden;border:1px solid #005555;margin-bottom:6px;">
+                    <div id="stability-fill" style="width:100%;height:100%;background:#00ffff;transition:width 0.25s ease-out;"></div>
+                </div>
+                <div id="stability-status" style="font-size:12px;font-weight:bold;color:#ffffff;">
+                    100% - Sistemas en rango de operación nominal
+                </div>
+            `;
+            document.body.appendChild(stabilityDiv);
+        }
+        this.stabilityDiv = stabilityDiv;
+        this.stabilityFill = document.getElementById('stability-fill');
+        this.stabilityStatus = document.getElementById('stability-status');
+
+        this.events.once('shutdown', () => {
+            if (this.stabilityDiv) this.stabilityDiv.style.display = 'none';
+        });
+        this.events.once('destroy', () => {
+            if (this.stabilityDiv) this.stabilityDiv.style.display = 'none';
+        });
+
+        // Overlay de sobrecarga
+        this.overloadOverlay = this.add.rectangle(W / 2, H / 2, W, H, 0xff0000, 0).setScrollFactor(0).setDepth(200);
+
+        this.actualizarBarraEstabilidad = () => {
+            const pct = Math.max(0, Math.min(100, this.estabilidad));
+            if (this.stabilityFill) {
+                this.stabilityFill.style.width = pct + '%';
+                if (pct <= 20) {
+                    this.stabilityFill.style.background = '#ff2222';
+                    this.stabilityDiv.style.borderColor = '#ff2222';
+                    this.stabilityDiv.style.boxShadow = '0 0 18px rgba(255,34,34,0.9)';
+                } else if (pct <= 40) {
+                    this.stabilityFill.style.background = '#ff6600';
+                    this.stabilityDiv.style.borderColor = '#ff6600';
+                    this.stabilityDiv.style.boxShadow = '0 0 16px rgba(255,100,0,0.7)';
+                } else if (pct <= 60) {
+                    this.stabilityFill.style.background = '#ffbb00';
+                    this.stabilityDiv.style.borderColor = '#ffbb00';
+                    this.stabilityDiv.style.boxShadow = '0 0 16px rgba(255,187,0,0.7)';
+                } else {
+                    this.stabilityFill.style.background = '#00ffff';
+                    this.stabilityDiv.style.borderColor = '#00ffff';
+                    this.stabilityDiv.style.boxShadow = '0 0 16px rgba(0,255,255,0.6)';
+                }
+            }
+            if (this.stabilityStatus) {
+                if (pct <= 20) {
+                    this.stabilityStatus.innerHTML = `<span style="color:#ff3333;">${pct}% - ¡SOBRECARGA INMINENTE! PURGA EN CONSOLA CENTRAL (${this.sobrecargaTimer}s)</span>`;
+                } else if (pct <= 40) {
+                    this.stabilityStatus.innerHTML = `<span style="color:#ff6600;">${pct}% - Pérdida de contención crítica</span>`;
+                } else if (pct <= 60) {
+                    this.stabilityStatus.innerHTML = `<span style="color:#ffbb00;">${pct}% - Fluctuación de energía severa</span>`;
+                } else if (pct <= 80) {
+                    this.stabilityStatus.innerHTML = `${pct}% - Desbalance leve en circuito`;
+                } else {
+                    this.stabilityStatus.innerHTML = `${pct}% - Sistemas en rango nominal`;
+                }
+            }
+        };
+
+        this.reducirEstabilidad = (motivo) => {
+            if (this.laboratorioRestaurado || this.sobrecargaActiva) return;
+            this.estabilidad = Math.max(0, this.estabilidad - 20);
+            this.actualizarBarraEstabilidad();
+
+            if (this.estabilidad === 80) {
+                this.cameras.main.shake(200, 0.015);
+                this.dialogues.show([
+                    motivo || "DESBALANCE EN SISTEMA.",
+                    "ESTABILIDAD: 80% (████████░░).",
+                    "Luces parpadean levemente.",
+                    "Zamo: Eso no sonó nada bien..."
+                ]);
+            } else if (this.estabilidad === 60) {
+                this.cameras.main.flash(200, 255, 100, 0);
+                this.dialogues.show([
+                    motivo || "FLUCTUACIÓN CRÍTICA.",
+                    "ESTABILIDAD: 60% (██████░░░░).",
+                    "Las pantallas comienzan a mostrar errores.",
+                    "Zamo: Las pantallas están perdiendo señal..."
+                ]);
+            } else if (this.estabilidad === 40) {
+                this.cameras.main.shake(300, 0.025);
+                this.dialogues.show([
+                    motivo || "FALLO MÚLTIPLE DE REINICIO.",
+                    "ESTABILIDAD: 40% (████░░░░░░).",
+                    "Chispas visibles en servidores de diagnóstico.",
+                    "Zamo: Ok... esto ya se siente realmente serio."
+                ]);
+            } else if (this.estabilidad <= 20) {
+                iniciarSobrecargaInminente();
+            }
+        };
+
+        const iniciarSobrecargaInminente = () => {
+            this.sobrecargaActiva = true;
+            this.sobrecargaTimer = 15;
+
+            this.cameras.main.flash(500, 255, 0, 0);
+            this.cameras.main.shake(600, 0.03);
+
+            this.tweens.add({
+                targets: this.overloadOverlay,
+                fillAlpha: 0.35,
+                duration: 400,
+                yoyo: true,
+                repeat: -1
+            });
+
+            this.actualizarBarraEstabilidad();
+
+            this.dialogues.show([
+                "¡SOBRECARGA INMINENTE!",
+                "ESTABILIDAD CRÍTICA: 20%.",
+                "¡Ejecuta purga en la Consola de Contención antes del apagado total!"
+            ]);
+
+            this.sobrecargaTimerEvent = this.time.addEvent({
+                delay: 1000,
+                repeat: 15,
+                callback: () => {
+                    this.sobrecargaTimer--;
+                    if (this.sobrecargaTimer >= 0) {
+                        this.actualizarBarraEstabilidad();
+                        if (this.sobrecargaTimer === 0) {
+                            derrotaApagadoTotal();
+                        }
+                    }
+                }
+            });
+        };
+
+        this.estabilizarSobrecarga = () => {
+            this.sobrecargaActiva = false;
+            this.estabilidad = 60;
+            this.actualizarBarraEstabilidad();
+            if (this.sobrecargaTimerEvent) this.sobrecargaTimerEvent.remove();
+            this.tweens.killTweensOf(this.overloadOverlay);
+            this.overloadOverlay.fillAlpha = 0;
+            this.updateMainObjective();
+
+            this.cameras.main.flash(300, 0, 255, 100);
+            this.dialogues.show([
+                "PURGA DE EMERGENCIA EXITOSA.",
+                "Sobrecarga disipada. Estabilidad recuperada al 60%.",
+                "Zamo: ¡Respiren todos! Aún seguimos de una sola pieza."
+            ]);
+        };
+
+        const derrotaApagadoTotal = () => {
+            this.sobrecargaActiva = false;
+            if (this.stabilityDiv) this.stabilityDiv.style.display = 'none';
+            if (this.sobrecargaTimerEvent) this.sobrecargaTimerEvent.remove();
+            this.tweens.killTweensOf(this.overloadOverlay);
+
+            // 1. Apagado de golpe en completa oscuridad
+            this.cameras.main.stopFollow();
+            this.cameras.main.setZoom(1);
+            this.cameras.main.setScroll(0, 0);
+
+            let blackScreen = this.add.rectangle(640, 360, 1280, 720, 0x000000, 1).setDepth(2000);
+
+            // 2. Pausa en oscuridad total
+            this.time.delayedCall(1500, () => {
+                // 3. "CLIC." Se enciende luz de emergencia sobre Zamo
+                let clickText = this.add.text(640, 260, '* CLIC *', {
+                    fontFamily: '"Outfit", sans-serif',
+                    fontSize: '24px',
+                    fontStyle: 'bold',
+                    fill: '#ffff00',
+                    resolution: 2
+                }).setOrigin(0.5).setDepth(2001);
+
+                let lightCircle = this.add.circle(640, 380, 70, 0xfff8d0, 0.45).setDepth(2001);
+                let zamoSprite = this.add.sprite(640, 380, 'zamo', 0).setScale(1.5).setDepth(2002);
+
+                this.time.delayedCall(800, () => {
+                    this.dialogues.show([
+                        "Zamo: Tengo una buena noticia.",
+                        "Zamo: No explotamos.",
+                        "Zamo: La mala es que tampoco arreglamos nada."
+                    ], () => {
+                        this.time.delayedCall(500, () => {
+                            this.scene.start('GameOverScene', {
+                                level: 'Level04Scene',
+                                title: 'SISTEMA CRÍTICO',
+                                subtitle: 'La sobrecarga provocó un apagado de emergencia de todo el laboratorio.',
+                                zamoQuote: 'Supongo que esto cuenta como tomar un descanso.',
+                                accentColor: '#ffaa00'
+                            });
+                        });
+                    });
+                });
+            });
+        };
+
         // --- Etiquetas de sector en el escenario ---
         this.add.text(320, 35, '[ NUCLEO CENTRAL DEL LABORATORIO ]', {
             fontFamily: '"Outfit", sans-serif', fontSize: '7px', fill: '#00ffff', resolution: 3
@@ -224,10 +454,10 @@ class Level04Scene extends Phaser.Scene {
                 );
 
                 if (this.symbolSequence[step] !== CORRECT_SYMBOL[step]) {
-                    this.time.delayedCall(800, () => {
+                    this.time.delayedCall(700, () => {
                         this.cameras.main.shake(150, 0.015);
                         this.symbolSequence = [];
-                        this.dialogues.show(dialogues.level04.symbolError);
+                        this.reducirEstabilidad("FRECUENCIA GEOMÉTRICA ERRÓNEA.");
                     });
                     return;
                 }
@@ -250,6 +480,11 @@ class Level04Scene extends Phaser.Scene {
         // ETAPA C: CONSOLA DE CONTENCION (Centro, x=320, y=230)
         // ================================================
         const contencionMachine = createObj(320, 230, 'machine_temp', () => {
+            if (this.sobrecargaActiva) {
+                this.estabilizarSobrecarga();
+                return;
+            }
+
             if (this.contencionDesactivada) {
                 this.dialogues.show([
                     'CONTENCION: DESACTIVADA',
@@ -445,6 +680,7 @@ class Level04Scene extends Phaser.Scene {
 
     // ------------------------------------------------
     mostrarPantallaFinal() {
+        if (this.stabilityDiv) this.stabilityDiv.style.display = 'none';
         const scrW = this.scale.width;
         const scrH = this.scale.height;
 

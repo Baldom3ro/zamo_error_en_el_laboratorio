@@ -66,12 +66,6 @@ class Zamo {
             }
         }
 
-        if (this.facing === 'left') {
-            this.sprite.setFlipX(true);
-        } else {
-            this.sprite.setFlipX(false);
-        }
-
         if (moving && (Math.abs(vx) > 3 || Math.abs(vy) > 3)) {
             if (this.scene.anims.exists('zamo_walk_' + this.facing)) {
                 this.sprite.anims.play('zamo_walk_' + this.facing, true);
@@ -80,6 +74,13 @@ class Zamo {
             if (this.scene.anims.exists('zamo_idle_' + this.facing)) {
                 this.sprite.anims.play('zamo_idle_' + this.facing, true);
             }
+        }
+
+        // Aplicar flipX DESPUÉS de anims.play para que no se reinicie
+        if (this.facing === 'left') {
+            this.sprite.setFlipX(true);
+        } else {
+            this.sprite.setFlipX(false);
         }
     }
 }

@@ -10,7 +10,8 @@ const gameConfig = {
         Level01Scene,
         Level02Scene,
         Level03Scene,
-        Level04Scene
+        Level04Scene,
+        GameOverScene
     ],
     scale: {
         mode: Phaser.Scale.FIT,
